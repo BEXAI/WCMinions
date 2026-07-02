@@ -246,6 +246,8 @@ let myPick = Math.floor(rnd(TEAMS.length));
 let snaps = [];           // guest snapshot buffer
 let gview = { players: [], ball: { x: F.cx, y: F.cy, vx: 0, vy: 0, rot: 0 } };
 let confetti = [];
+let flashT = 999; // seconds since the last goal, drives the white flash on host AND guest
+let joinBusy = false;
 let lastT = performance.now(), acc = 0, lastSnapT = 0, lastInSend = 0;
 
 const SPOTS = [[30, 0], [170, -125], [170, 125], [430, -85], [430, 85]]; // GK, D, D, F, F
@@ -590,6 +592,7 @@ function beginMatch() {
   players = makePlayers();
   score = [0, 0]; half = 1; clock = 0; excite = 0;
   confetti.length = 0;
+  flashT = 999;
   goalSeq = 0; kickSeq = 0; whistleSeq = 0;
   seen.a = { p: Input.passSeq, s: Input.shootSeq };
   seen.b = { p: guestInput.ps, s: guestInput.ss };
@@ -605,6 +608,7 @@ function beginMatchGuest() {
   gview = { players: makePlayers(), ball: { x: F.cx, y: F.cy, vx: 0, vy: 0, rot: 0 } };
   score = [0, 0]; half = 1; clock = 0; excite = 0;
   confetti.length = 0;
+  flashT = 999;
   goalSeq = 0; kickSeq = 0; whistleSeq = 0;
   state = 'countdown'; cdRemain = 3;
   Fx.sync();
@@ -642,6 +646,7 @@ function toMenu() {
   running = false;
   state = 'menu';
   mode = null;
+  joinBusy = false;
   if (net) net.leave();
   UI.setBadge('');
   UI.showMenu();
@@ -665,16 +670,26 @@ function getNet() {
   };
   net.onMsg = onNetMsg;
   net.onPeerLeft = (msg) => {
+    joinBusy = false;
     if (running) {
       running = false;
       UI.toast(msg || 'Your opponent left the match');
       toMenuSoon();
+    } else if (mode === 'host' && net.role === 'host') {
+      // Guest backed out before kickoff — room and code are still alive.
+      UI.setBadge('');
+      UI.el.hostStatus.textContent = 'Rival left — waiting for a new challenger…';
+      UI.showPanel('hostPanel');
+      UI.el.menu.classList.remove('hidden');
+      UI.toast(msg || 'Rival disconnected');
     } else {
+      mode = null;
       UI.toast(msg || 'Peer disconnected');
       UI.showPanel('homePanel');
     }
   };
   net.onErr = (msg) => {
+    joinBusy = false;
     UI.el.joinStatus.textContent = msg;
     UI.toast(msg);
   };
@@ -725,8 +740,10 @@ async function startHost() {
 }
 
 async function doJoin() {
+  if (joinBusy) return; // double-click / Enter+click guard
   const code = UI.el.joinInput.value.trim().toUpperCase();
   if (code.length < 4) { UI.el.joinStatus.textContent = 'Enter the 4-letter code.'; return; }
+  joinBusy = true;
   mode = 'guest';
   UI.el.joinStatus.textContent = 'Connecting…';
   try {
@@ -736,6 +753,7 @@ async function doJoin() {
   } catch (e) {
     UI.el.joinStatus.textContent = 'Could not reach the server.';
     mode = null;
+    joinBusy = false;
   }
 }
 
@@ -823,6 +841,7 @@ function onGoalFx() {
   AudioFx.goal();
   spawnConfetti();
   excite = 1;
+  flashT = 0;
   UI.goalBanner(TEAMS[lastScorer === 0 ? teamA : teamB].name.toUpperCase());
 }
 
@@ -1134,10 +1153,8 @@ function drawBanners() {
     ctx.fillStyle = '#fff';
     ctx.fillText(sub, F.cx, F.cy + 16);
   }
-  if (state === 'goal') {
-    const a = Math.max(0, 0.3 - stateT * 0.22);
-    if (a > 0) { ctx.fillStyle = `rgba(255,255,255,${a})`; ctx.fillRect(0, 0, W, H); }
-  }
+  const flashA = Math.max(0, 0.3 - flashT * 0.22);
+  if (flashA > 0) { ctx.fillStyle = `rgba(255,255,255,${flashA})`; ctx.fillRect(0, 0, W, H); }
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -1189,7 +1206,7 @@ const UI = {
     this.el.btnJoin.onclick = () => { AudioFx.ensure(); this.showPanel('joinPanel'); this.el.joinStatus.textContent = ''; this.el.joinInput.value = ''; this.el.joinInput.focus(); };
     this.el.btnDoJoin.onclick = () => doJoin();
     this.el.btnCancelHost.onclick = () => { if (net) net.leave(); mode = null; this.showPanel('homePanel'); };
-    this.el.btnCancelJoin.onclick = () => { if (net) net.leave(); mode = null; this.showPanel('homePanel'); };
+    this.el.btnCancelJoin.onclick = () => { if (net) net.leave(); mode = null; joinBusy = false; this.showPanel('homePanel'); };
     this.el.btnRematch.onclick = () => requestRematch();
     this.el.btnMenu.onclick = () => toMenu();
     this.el.muteBtn.onclick = () => { AudioFx.ensure(); toggleMute(); };
@@ -1251,14 +1268,18 @@ function toggleMute() {
 
 /* ============================== main loop ============================== */
 function tick(now) {
-  const dt = Math.min(0.25, (now - lastT) / 1000);
+  // Hidden tabs get their timers clamped to >=1s by the browser; a generous dt
+  // cap lets a hidden host catch the sim up in fixed steps instead of running
+  // the match in slow motion for both players.
+  const dt = Math.min(2.5, (now - lastT) / 1000);
   lastT = now;
   if (!running) return;
+  flashT += dt;
   if (mode === 'guest') {
     guestUpdate(now);
     sendGuestInput(now, false);
   } else {
-    acc = Math.min(acc + dt, 0.2);
+    acc = Math.min(acc + dt, 2.5);
     while (acc >= STEP) { step(STEP); acc -= STEP; }
     if (mode === 'host' && net && net.ready && now - lastSnapT >= 48) {
       net.send(makeSnap());

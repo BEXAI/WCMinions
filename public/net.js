@@ -15,6 +15,7 @@ class Net {
     this.ready = false;     // a usable game channel exists
     this.transport = null;  // 'p2p' | 'relay'
     this.fallbackTimer = null;
+    this._downTimer = null;
     this._pendIce = [];
 
     // Callbacks the game wires up.
@@ -35,7 +36,7 @@ class Net {
       this.ws = ws;
       ws.onopen = () => resolve();
       ws.onerror = () => reject(new Error('Cannot reach the game server'));
-      ws.onclose = () => { if (this.role) this._peerGone('Lost connection to the server'); };
+      ws.onclose = () => { if (this.role) this._peerGone('Lost connection to the server', true); };
       ws.onmessage = (ev) => {
         let m;
         try { m = JSON.parse(ev.data); } catch { return; }
@@ -59,13 +60,19 @@ class Net {
   leave() {
     this.role = null;
     this.code = null;
+    this._resetPeer();
+    this._wsSend({ t: 'leave' });
+  }
+
+  /** Tear down the peer link but keep room membership intact. */
+  _resetPeer() {
     this.ready = false;
     this.transport = null;
     this._pendIce = [];
     clearTimeout(this.fallbackTimer);
+    clearTimeout(this._downTimer);
     if (this.dc) { try { this.dc.close(); } catch { } this.dc = null; }
     if (this.pc) { try { this.pc.close(); } catch { } this.pc = null; }
-    this._wsSend({ t: 'leave' });
   }
 
   /* ---------- internals ---------- */
@@ -112,6 +119,23 @@ class Net {
     this.pc = pc;
     pc.onicecandidate = (e) => { if (e.candidate) this._sig({ ice: e.candidate }); };
     pc.ondatachannel = (e) => { this.dc = e.channel; this._wireDc(this.dc); };
+    // Detect abrupt peer loss (wifi drop, lid close) in seconds instead of
+    // waiting up to a minute for the server's ping sweep.
+    pc.onconnectionstatechange = () => {
+      if (this.pc !== pc || this.transport !== 'p2p' || !this.ready) return;
+      const st = pc.connectionState;
+      if (st === 'failed') this._peerGone('Connection to your opponent was lost');
+      else if (st === 'disconnected') {
+        clearTimeout(this._downTimer);
+        this._downTimer = setTimeout(() => {
+          if (this.pc === pc && this.ready && ['disconnected', 'failed'].includes(pc.connectionState)) {
+            this._peerGone('Connection to your opponent was lost');
+          }
+        }, 4000);
+      } else if (st === 'connected') {
+        clearTimeout(this._downTimer);
+      }
+    };
     return pc;
   }
 
@@ -157,7 +181,11 @@ class Net {
       try { m = JSON.parse(ev.data); } catch { return; }
       if (this.onMsg) this.onMsg(m);
     };
-    // Peer disappearance is reported via the server's peer-left.
+    // ready is cleared before we close the channel ourselves (leave/_resetPeer),
+    // so this only fires for a genuinely lost peer.
+    dc.onclose = () => {
+      if (this.ready && this.transport === 'p2p') this._peerGone('Connection to your opponent was lost');
+    };
   }
 
   _armFallback() {
@@ -180,9 +208,15 @@ class Net {
 
   _sig(data) { this._wsSend({ t: 'signal', data }); }
 
-  _peerGone(msg) {
+  _peerGone(msg, hard = false) {
     const wasActive = this.role !== null;
-    this.leave();
+    if (!hard && this.role === 'host') {
+      // Keep the room and code alive — the guest slot reopened server-side,
+      // so the host can wait for a new challenger without re-hosting.
+      this._resetPeer();
+    } else {
+      this.leave();
+    }
     if (wasActive && this.onPeerLeft) this.onPeerLeft(msg);
   }
 }

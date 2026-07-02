@@ -56,9 +56,14 @@ function leaveRoom(ws, notifyPeer = true) {
   if (!room.host) rooms.delete(code);
 }
 
+wss.on('error', (e) => console.error('wss error:', e.message));
+
 wss.on('connection', (ws) => {
   ws.alive = true;
   ws.roomCode = null;
+  // Without an error listener, a socket error is rethrown by EventEmitter and
+  // kills the whole process (every active match).
+  ws.on('error', (e) => console.error('ws error:', e.message));
   ws.on('pong', () => { ws.alive = true; });
 
   ws.on('message', (buf) => {
@@ -79,6 +84,9 @@ wss.on('connection', (ws) => {
         const code = String(m.code || '').trim().toUpperCase();
         const room = rooms.get(code);
         if (!room || !room.host) { send(ws, { t: 'err', msg: 'Room not found — check the code.' }); return; }
+        // Double-submitted join from the socket already in the room is a no-op,
+        // not a "room full" error.
+        if (room.guest === ws || room.host === ws) { send(ws, { t: 'joined', code }); return; }
         if (room.guest) { send(ws, { t: 'err', msg: 'That room is already full.' }); return; }
         leaveRoom(ws);
         room.guest = ws;
@@ -102,14 +110,20 @@ wss.on('connection', (ws) => {
   ws.on('close', () => leaveRoom(ws));
 });
 
-// Reap dead connections so rooms free up.
+// Reap dead connections so rooms free up and peers learn about silent drops
+// quickly (worst case = two sweep intervals).
 setInterval(() => {
   for (const ws of wss.clients) {
     if (!ws.alive) { ws.terminate(); continue; }
     ws.alive = false;
     try { ws.ping(); } catch { /* closing */ }
   }
-}, 30000);
+}, 12000);
+
+// A lobby/game server should log and survive a stray throw rather than drop
+// every active match.
+process.on('uncaughtException', (e) => console.error('uncaught:', e));
+process.on('unhandledRejection', (e) => console.error('unhandled rejection:', e));
 
 server.listen(PORT, () => {
   console.log("⚽ MINI CUP '26 — server is up!");
