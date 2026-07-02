@@ -112,7 +112,9 @@ function drawFlag(c, x, y, w, h, team) {
 const AudioFx = {
   ctx: null, master: null, crowdGain: null, crowdFilter: null, muted: false,
   ensure() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    // iOS uses a non-standard 'interrupted' state after calls/Siri/lock —
+    // resume from any non-running state, not just 'suspended'.
+    if (this.ctx) { if (this.ctx.state !== 'running') this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const c = (this.ctx = new AC());
@@ -297,19 +299,42 @@ const Touch = {
     this._bind(UI.el.tbtnSprint, () => { this.sprint = true; }, () => { this.sprint = false; });
   },
   _bind(el, down, up) {
+    // Count active touches per button: a second fingertip brushing a held
+    // button must not double-fire down() or release a still-held SPRINT.
+    el._active = 0;
     el.addEventListener('touchstart', (e) => {
       e.preventDefault();
       AudioFx.ensure();
-      el.classList.add('pressed');
-      down();
+      const was = el._active;
+      el._active += e.changedTouches.length;
+      if (was === 0) {
+        el.classList.add('pressed');
+        down();
+      }
     }, { passive: false });
     const release = (e) => {
       e.preventDefault();
-      el.classList.remove('pressed');
-      if (up) up();
+      el._active = Math.max(0, el._active - e.changedTouches.length);
+      if (el._active === 0) {
+        el.classList.remove('pressed');
+        if (up) up();
+      }
     };
     el.addEventListener('touchend', release, { passive: false });
     el.addEventListener('touchcancel', release, { passive: false });
+  },
+  /** Clear all latched touch state — called whenever the touch UI is hidden
+   * mid-gesture (opponent left, menu, end screen). */
+  reset() {
+    this.stickId = null;
+    this.ax = 0;
+    this.ay = 0;
+    this.sprint = false;
+    if (!UI.el.stick) return;
+    UI.el.stick.classList.remove('on');
+    for (const el of [UI.el.tbtnPass, UI.el.tbtnShoot, UI.el.tbtnSprint]) {
+      if (el) { el._active = 0; el.classList.remove('pressed'); }
+    }
   },
 };
 
@@ -709,6 +734,10 @@ function beginMatchGuest() {
 function doRematch() {
   score = [0, 0]; half = 1; clock = 0; excite = 0;
   confetti.length = 0;
+  // Discard pass/shoot presses queued on the end screen — the kickoff taker
+  // spawns exactly at kick range, so a stale seq fires a ghost shot.
+  seen.a = { p: Input.passSeq, s: Input.shootSeq };
+  seen.b = { p: guestInput.ps, s: guestInput.ss };
   kickoff(0);
   startCountdown(3.0);
 }
@@ -1330,7 +1359,10 @@ const UI = {
     }
   },
   showTouchUI(show) {
-    this.el.touchUI.classList.toggle('hidden', !(show && IS_TOUCH));
+    const on = show && IS_TOUCH;
+    const wasHidden = this.el.touchUI.classList.contains('hidden');
+    this.el.touchUI.classList.toggle('hidden', !on);
+    if (!on && !wasHidden) Touch.reset();
   },
   showPanel(name) {
     for (const p of ['homePanel', 'hostPanel', 'joinPanel']) this.el[p].classList.toggle('hidden', p !== name);
@@ -1372,8 +1404,10 @@ const UI = {
       this.el.btnRematch.textContent = mode === 'guest' ? 'REQUEST REMATCH' : 'REMATCH';
       this.el.endNote.textContent = mode === 'guest' ? 'The host controls the rematch' : '';
       this.el.endPanel.classList.remove('hidden');
+      this.showTouchUI(false); // buttons in the viewport gutter outlive the stage overlay
     } else {
       this.el.endPanel.classList.add('hidden');
+      if (running) this.showTouchUI(true);
     }
   },
 };
@@ -1422,4 +1456,20 @@ Touch.init();
 requestAnimationFrame(frame);
 // Keep the host simulating (and guest inputs flowing) when the tab is hidden —
 // rAF pauses in background tabs, which would freeze the match for the peer.
+// (iOS Safari suspends JS entirely when backgrounded; recovery below.)
 setInterval(() => { if (document.hidden) tick(performance.now()); }, 50);
+
+// iOS Safari suspends the page on app-switch/lock. On return: kick the audio
+// session back to life, don't let dt spike, and drop stale guest snapshots so
+// interpolation doesn't scrub across the gap. Dead sockets surface via
+// ws.onclose → the normal peer-left flow.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (AudioFx.ctx && AudioFx.ctx.state !== 'running') AudioFx.ctx.resume();
+  lastT = performance.now();
+  if (mode === 'guest' && snaps.length > 1) snaps = [snaps[snaps.length - 1]];
+});
+
+// Safari's back-forward cache can restore this page with a dead WebSocket and
+// stale match state — a fresh load is the only honest recovery.
+window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });

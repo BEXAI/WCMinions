@@ -265,7 +265,10 @@ button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; bo
 
 #touchZone {
   position: absolute;
-  top: 0; left: 0; bottom: 0;
+  top: 0; bottom: 0;
+  /* Inset from the screen edge — iOS Safari claims edge touches for the
+   * history back-swipe gesture. */
+  left: max(14px, env(safe-area-inset-left));
   width: 55%;
   pointer-events: auto;
   touch-action: none;
@@ -320,7 +323,7 @@ button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; bo
 .tbtn.pass { width: 72px; height: 72px; right: 104px; bottom: 6px; background: #6bcb77; font-size: 13px; }
 .tbtn.sprint { width: 64px; height: 64px; right: 30px; bottom: 106px; background: #4d96ff; font-size: 11px; color: #eef4ff; }
 
-body.touch #muteBtn { padding: 10px 14px; font-size: 18px; }
+body.touch #muteBtn { padding: 10px 14px; font-size: 18px; min-width: 44px; min-height: 44px; }
 
 /* ---------- rotate-to-landscape overlay ---------- */
 #rotate {
@@ -338,7 +341,10 @@ body.touch #muteBtn { padding: 10px 14px; font-size: 18px; }
   color: var(--gold);
 }
 #rotate span { font-size: 14px; font-weight: 700; color: #9fc4a8; }
-@media (orientation: portrait) {
+/* Coarse-pointer gate: phones/tablets only. Touchscreen laptops report
+ * maxTouchPoints > 0 but have a fine primary pointer — a portrait-shaped
+ * window there must NOT get an undismissable overlay. */
+@media (orientation: portrait) and (pointer: coarse) {
   body.touch #rotate { display: flex; }
 }
 
