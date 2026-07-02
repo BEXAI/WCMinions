@@ -1,0 +1,13 @@
+{
+  "name": "mini-cup-26",
+  "version": "1.0.0",
+  "description": "MINI CUP '26 — 5v5 P2P world-cup mascot soccer (WebRTC + WebSocket signaling)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}

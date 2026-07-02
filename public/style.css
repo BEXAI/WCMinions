@@ -1,0 +1,240 @@
+/* MINI CUP '26 — stadium-night UI */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --gold: #ffd75e;
+  --ink: #0c1410;
+  --panel: rgba(9, 16, 12, 0.92);
+  --font: "Arial Rounded MT Bold", "Avenir Next", "Trebuchet MS", system-ui, sans-serif;
+}
+
+html, body {
+  height: 100%;
+  background: radial-gradient(120% 90% at 50% 0%, #16281d 0%, #0a120d 55%, #060b08 100%);
+  font-family: var(--font);
+  color: #f2f6f2;
+  overflow: hidden;
+}
+
+body { display: flex; align-items: center; justify-content: center; }
+
+#stage {
+  position: relative;
+  width: min(100vw, 160vh);
+  aspect-ratio: 1280 / 800;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.hidden { display: none !important; }
+
+/* ---------- menu ---------- */
+#menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 7, 0.66);
+  border-radius: 10px;
+}
+
+.panel {
+  width: min(680px, 92%);
+  max-height: 94%;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 2px solid rgba(255, 215, 94, 0.35);
+  border-radius: 22px;
+  padding: 30px 34px;
+  text-align: center;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+h1 {
+  font-size: 52px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-shadow: 0 3px 0 #6b520f, 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.tag { margin: 10px 0 18px; color: #cfe0d2; font-size: 15px; line-height: 1.45; }
+
+h2 { font-size: 17px; letter-spacing: 3px; color: #9fc4a8; margin-bottom: 12px; }
+
+#teamGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.team-cell {
+  cursor: pointer;
+  padding: 7px 4px 5px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.05);
+  transition: transform 0.1s, border-color 0.1s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.team-cell:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.1); }
+.team-cell.sel { border-color: var(--gold); background: rgba(255, 215, 94, 0.14); }
+.team-cell canvas { border-radius: 4px; width: 56px; height: 37px; }
+.team-cell span { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: #e8f0e8; }
+
+.row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+button {
+  font-family: var(--font);
+  cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: #1c2b21;
+  color: #f2f6f2;
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  transition: transform 0.08s, filter 0.08s;
+}
+button:hover { transform: translateY(-2px); filter: brightness(1.15); }
+button:active { transform: translateY(1px); }
+button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; box-shadow: 0 4px 0 #8a6d14; }
+
+.hint { margin-top: 16px; font-size: 12.5px; color: #8faa93; line-height: 1.6; }
+
+#roomCode {
+  font-size: 64px;
+  font-weight: 900;
+  letter-spacing: 14px;
+  color: var(--gold);
+  margin: 12px 0 8px;
+  text-shadow: 0 3px 0 #6b520f;
+}
+#hostStatus, #joinStatus { min-height: 22px; margin: 10px 0 16px; color: #cfe0d2; font-size: 14px; }
+
+#joinInput {
+  display: block;
+  margin: 14px auto;
+  width: 240px;
+  text-align: center;
+  font-family: var(--font);
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 10px;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(255, 215, 94, 0.4);
+  border-radius: 14px;
+  padding: 10px 6px;
+  outline: none;
+}
+#joinInput:focus { border-color: var(--gold); }
+
+/* ---------- goal banner ---------- */
+#goalBanner {
+  position: absolute;
+  top: 36%;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+}
+#goalBanner.show { animation: goalSlide 2.6s ease-out forwards; }
+#goalText {
+  display: inline-block;
+  font-size: 64px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: #fff;
+  background: linear-gradient(100deg, #d4a017, var(--gold), #d4a017);
+  padding: 10px 46px;
+  border-radius: 16px;
+  transform: skewX(-8deg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 3px 0 rgba(90, 60, 0, 0.8);
+}
+@keyframes goalSlide {
+  0%   { opacity: 0; transform: translateX(-60%); }
+  12%  { opacity: 1; transform: translateX(0); }
+  80%  { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(30%); }
+}
+
+/* ---------- end panel ---------- */
+#endPanel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 7, 0.7);
+  border-radius: 10px;
+}
+#endPanel .card {
+  background: var(--panel);
+  border: 2px solid rgba(255, 215, 94, 0.4);
+  border-radius: 24px;
+  padding: 34px 48px;
+  text-align: center;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+}
+.trophy { font-size: 84px; filter: drop-shadow(0 8px 18px rgba(255, 215, 94, 0.35)); }
+#endTitle { font-size: 30px; color: var(--gold); letter-spacing: 1.5px; margin: 10px 0 6px; }
+#endScore { font-size: 44px; font-weight: 900; margin-bottom: 8px; }
+#endNote { min-height: 20px; color: #9fc4a8; font-size: 13.5px; margin-bottom: 16px; }
+
+/* ---------- toast / badge / mute ---------- */
+#toast {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #26150f;
+  border: 2px solid #ff9f6b;
+  color: #ffd9c2;
+  border-radius: 12px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+  z-index: 30;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+#badge {
+  position: absolute;
+  top: 14px;
+  right: 66px;
+  background: rgba(9, 16, 12, 0.85);
+  border: 1.5px solid rgba(255, 215, 94, 0.5);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+#muteBtn {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  padding: 6px 10px;
+  font-size: 16px;
+  border-radius: 12px;
+  background: rgba(9, 16, 12, 0.85);
+}

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MINI CUP '26 — 5v5 P2P Mascot Soccer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="1280" height="800"></canvas>
+
+  <div id="goalBanner"><span id="goalText">GOOOOAL!</span></div>
+
+  <div id="menu">
+    <div class="panel" id="homePanel">
+      <h1>&#9917; MINI CUP &rsquo;26</h1>
+      <p class="tag">5v5 world-cup mayhem with chibi mascots.<br>Play a rival on your network &mdash; or take on the CPU.</p>
+      <h2>CHOOSE YOUR SQUAD</h2>
+      <div id="teamGrid"></div>
+      <div class="row">
+        <button id="btnSolo" class="big gold">&#9654; SOLO VS CPU</button>
+        <button id="btnHost" class="big">&#128225; HOST MATCH</button>
+        <button id="btnJoin" class="big">&#128273; JOIN MATCH</button>
+      </div>
+      <p class="hint">WASD / arrows move &middot; X pass &middot; SPACE shoot &middot; SHIFT sprint &middot; M mute</p>
+    </div>
+
+    <div class="panel hidden" id="hostPanel">
+      <h2>ROOM CODE</h2>
+      <div id="roomCode">&middot;&middot;&middot;&middot;</div>
+      <p id="hostStatus">Creating room&hellip;</p>
+      <p class="hint">Your rival opens this site on your network and enters the code.<br>Same computer? Use a second browser window.</p>
+      <button id="btnCancelHost">&#10005; CANCEL</button>
+    </div>
+
+    <div class="panel hidden" id="joinPanel">
+      <h2>JOIN A MATCH</h2>
+      <input id="joinInput" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+      <button id="btnDoJoin" class="big gold">JOIN &rarr;</button>
+      <p id="joinStatus"></p>
+      <button id="btnCancelJoin">&#10005; BACK</button>
+    </div>
+  </div>
+
+  <div id="endPanel" class="hidden">
+    <div class="card">
+      <div class="trophy">&#127942;</div>
+      <h2 id="endTitle">&mdash;</h2>
+      <div id="endScore">0 &mdash; 0</div>
+      <p id="endNote"></p>
+      <div class="row">
+        <button id="btnRematch" class="big gold">REMATCH</button>
+        <button id="btnMenu" class="big">MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="badge" class="hidden"></div>
+  <button id="muteBtn" title="Mute (M)">&#128266;</button>
+</div>
+
+<script src="net.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
