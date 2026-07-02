@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MINI CUP '26">
+<meta name="theme-color" content="#0a120d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%E2%9A%BD%3C/text%3E%3C/svg%3E">
 <title>MINI CUP '26 — 5v5 P2P Mascot Soccer</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -59,6 +65,20 @@
   <div id="toast"></div>
   <div id="badge" class="hidden"></div>
   <button id="muteBtn" title="Mute (M)">&#128266;</button>
+</div>
+
+<div id="touchUI" class="hidden">
+  <div id="touchZone"></div>
+  <div id="stick"><div id="stickKnob"></div></div>
+  <div class="tcluster">
+    <div id="tbtnSprint" class="tbtn sprint">SPRINT</div>
+    <div id="tbtnPass" class="tbtn pass">PASS</div>
+    <div id="tbtnShoot" class="tbtn shoot">SHOOT</div>
+  </div>
+</div>
+
+<div id="rotate">
+  <div>&#128260;<br>Rotate your phone<br><span>MINI CUP &rsquo;26 plays in landscape</span></div>
 </div>
 
 <script src="net.js"></script>

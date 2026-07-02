@@ -11,6 +11,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const rnd = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
 const r1 = (n) => Math.round(n * 10) / 10;
 const FONT = '"Arial Rounded MT Bold","Avenir Next","Trebuchet MS",system-ui,sans-serif';
+const IS_TOUCH = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
 
 function rr(c, x, y, w, h, r) {
   r = Math.min(r, w / 2, h / 2);
@@ -203,13 +204,11 @@ const Input = {
       if (e.repeat) return;
       const k = e.key.toLowerCase();
       this.keys.add(k);
-      let edge = false;
-      if (k === 'x' || k === 'j') { this.passSeq++; edge = true; }
-      if (k === ' ' || k === 'k') { this.shootSeq++; edge = true; }
+      if (k === 'x' || k === 'j') pressPass();
+      if (k === ' ' || k === 'k') pressShoot();
       if (k === 'm') toggleMute();
       if (k === 'enter') requestRematch();
       AudioFx.ensure();
-      if (edge && mode === 'guest') sendGuestInput(performance.now(), true);
     });
     addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     addEventListener('blur', () => this.keys.clear());
@@ -221,7 +220,96 @@ const Input = {
     if (this.keys.has('arrowup') || this.keys.has('w')) ay -= 1;
     if (this.keys.has('arrowdown') || this.keys.has('s')) ay += 1;
     if (ax && ay) { ax *= 0.7071; ay *= 0.7071; }
-    return { ax, ay, sprint: this.keys.has('shift') };
+    if (Touch.ax || Touch.ay) { ax = Touch.ax; ay = Touch.ay; } // analog stick wins
+    return { ax, ay, sprint: this.keys.has('shift') || Touch.sprint };
+  },
+};
+
+/* Shared press actions for keyboard and touch buttons. */
+function pressPass() {
+  Input.passSeq++;
+  AudioFx.ensure();
+  if (mode === 'guest') sendGuestInput(performance.now(), true);
+}
+function pressShoot() {
+  Input.shootSeq++;
+  AudioFx.ensure();
+  if (mode === 'guest') sendGuestInput(performance.now(), true);
+}
+
+/* ============================== touch controls ============================== */
+/* Floating joystick on the left 55% of the screen; PASS / SHOOT / SPRINT
+ * buttons bottom-right. Multi-touch: the stick tracks its own touch id, each
+ * button tracks its own presses. */
+const Touch = {
+  ax: 0, ay: 0, sprint: false,
+  stickId: null, originX: 0, originY: 0,
+  init() {
+    if (!IS_TOUCH) return;
+    const zone = UI.el.touchZone, stick = UI.el.stick, knob = UI.el.stickKnob;
+    const R = 52;
+    const setStick = (dx, dy) => {
+      const d = Math.hypot(dx, dy) || 1;
+      const cl = Math.min(d, R);
+      const ux = dx / d, uy = dy / d;
+      knob.style.transform = `translate(${ux * cl}px, ${uy * cl}px)`;
+      const mag = cl / R;
+      const m = mag < 0.18 ? 0 : mag; // deadzone
+      this.ax = ux * m;
+      this.ay = uy * m;
+    };
+    zone.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      AudioFx.ensure();
+      for (const t of e.changedTouches) {
+        if (this.stickId !== null) continue;
+        this.stickId = t.identifier;
+        this.originX = t.clientX;
+        this.originY = t.clientY;
+        stick.style.left = t.clientX + 'px';
+        stick.style.top = t.clientY + 'px';
+        stick.classList.add('on');
+        setStick(0, 0);
+      }
+    }, { passive: false });
+    zone.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this.stickId) continue;
+        setStick(t.clientX - this.originX, t.clientY - this.originY);
+      }
+    }, { passive: false });
+    const end = (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this.stickId) continue;
+        this.stickId = null;
+        this.ax = 0;
+        this.ay = 0;
+        stick.classList.remove('on');
+      }
+    };
+    zone.addEventListener('touchend', end, { passive: false });
+    zone.addEventListener('touchcancel', end, { passive: false });
+
+    this._bind(UI.el.tbtnPass, () => pressPass());
+    this._bind(UI.el.tbtnShoot, () => pressShoot());
+    this._bind(UI.el.tbtnSprint, () => { this.sprint = true; }, () => { this.sprint = false; });
+  },
+  _bind(el, down, up) {
+    el.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      AudioFx.ensure();
+      el.classList.add('pressed');
+      down();
+    }, { passive: false });
+    const release = (e) => {
+      e.preventDefault();
+      el.classList.remove('pressed');
+      if (up) up();
+    };
+    el.addEventListener('touchend', release, { passive: false });
+    el.addEventListener('touchcancel', release, { passive: false });
   },
 };
 
@@ -601,6 +689,7 @@ function beginMatch() {
   Fx.sync();
   snaps = [];
   running = true;
+  UI.showTouchUI(true);
 }
 
 function beginMatchGuest() {
@@ -614,6 +703,7 @@ function beginMatchGuest() {
   Fx.sync();
   snaps = [];
   running = true;
+  UI.showTouchUI(true);
 }
 
 function doRematch() {
@@ -649,6 +739,7 @@ function toMenu() {
   joinBusy = false;
   if (net) net.leave();
   UI.setBadge('');
+  UI.showTouchUI(false);
   UI.showMenu();
 }
 
@@ -879,9 +970,12 @@ const ctx = cvs.getContext('2d');
 
 const crowd = [];
 (function buildCrowd() {
+  // Fewer animated crowd dots on touch devices — fill-rate is the scarce
+  // resource on phones.
+  const K = IS_TOUCH ? 0.45 : 1;
   const cols = ['#e8c39e', '#d9a066', '#8d5524', '#f1d4af', '#ffd75e', '#ff6b6b', '#4d96ff', '#6bcb77', '#ffffff', '#c8b6ff'];
   function band(x0, x1, y0, y1, n) {
-    for (let i = 0; i < n; i++)
+    for (let i = 0; i < Math.round(n * K); i++)
       crowd.push({ x: rnd(x0, x1), y: rnd(y0, y1), c: cols[Math.floor(rnd(cols.length))], ph: rnd(TAU), r: rnd(2.5, 4) });
   }
   band(20, W - 20, 16, 84, 320);
@@ -892,13 +986,30 @@ const crowd = [];
 
 const ADS = ["MINI CUP '26", 'TINY COLA', "GOAL-O's", 'BANANA AIR', 'KICKR BOOTS', 'TURF & CO'];
 
+// The stadium (background, stands, ad boards, pitch, goals) is static — render
+// it once to an offscreen canvas and blit per frame. Big win on mobile GPUs.
+const bgCanvas = document.createElement('canvas');
+(function buildBg() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  bgCanvas.width = W * dpr;
+  bgCanvas.height = H * dpr;
+  const c = bgCanvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.fillStyle = '#0c1410';
+  c.fillRect(0, 0, W, H);
+  c.fillStyle = '#141f19';
+  c.fillRect(0, 0, W, 100);
+  c.fillRect(0, H - 100, W, 100);
+  c.fillRect(0, 0, 84, H);
+  c.fillRect(W - 84, 0, 84, H);
+  drawAds(c);
+  drawPitch(c);
+})();
+
 function render(now) {
   const t = now / 1000;
-  ctx.fillStyle = '#0c1410';
-  ctx.fillRect(0, 0, W, H);
-  drawStands(t);
-  drawAds();
-  drawPitch();
+  ctx.drawImage(bgCanvas, 0, 0, W, H);
+  drawCrowd(t);
   const v = mode === 'guest' ? gview : { players, ball };
   if (state !== 'menu' && v.players.length) {
     drawEntities(v, t);
@@ -908,12 +1019,7 @@ function render(now) {
   drawBanners();
 }
 
-function drawStands(t) {
-  ctx.fillStyle = '#141f19';
-  ctx.fillRect(0, 0, W, 100);
-  ctx.fillRect(0, H - 100, W, 100);
-  ctx.fillRect(0, 0, 84, H);
-  ctx.fillRect(W - 84, 0, 84, H);
+function drawCrowd(t) {
   const amp = 1.2 + excite * 4;
   ctx.globalAlpha = 0.85;
   for (const c of crowd) {
@@ -924,67 +1030,67 @@ function drawStands(t) {
   ctx.globalAlpha = 1;
 }
 
-function drawAds() {
+function drawAds(c) {
   const bw = 176, bh = 20;
-  ctx.font = 'bold 12px ' + FONT;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  c.font = 'bold 12px ' + FONT;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
   let k = 0;
   for (let x = F.left; x + bw <= F.right + 2; x += bw + 4) {
     for (const y of [F.top - 26, F.bottom + 8]) {
-      ctx.fillStyle = k % 2 ? '#20302a' : '#ffd75e';
-      rr(ctx, x, y, bw, bh, 3);
-      ctx.fill();
-      ctx.fillStyle = k % 2 ? '#ffd75e' : '#20302a';
-      ctx.fillText(ADS[k % ADS.length], x + bw / 2, y + bh / 2 + 1);
+      c.fillStyle = k % 2 ? '#20302a' : '#ffd75e';
+      rr(c, x, y, bw, bh, 3);
+      c.fill();
+      c.fillStyle = k % 2 ? '#ffd75e' : '#20302a';
+      c.fillText(ADS[k % ADS.length], x + bw / 2, y + bh / 2 + 1);
       k++;
     }
   }
 }
 
-function drawPitch() {
+function drawPitch(c) {
   const n = 10, bw = F.w / n;
   for (let i = 0; i < n; i++) {
-    ctx.fillStyle = i % 2 ? '#2c8a43' : '#31954a';
-    ctx.fillRect(F.left + i * bw, F.top, bw + 1, F.h);
+    c.fillStyle = i % 2 ? '#2c8a43' : '#31954a';
+    c.fillRect(F.left + i * bw, F.top, bw + 1, F.h);
   }
-  ctx.strokeStyle = 'rgba(245,250,245,.85)';
-  ctx.fillStyle = 'rgba(245,250,245,.85)';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(F.left, F.top, F.w, F.h);
-  ctx.beginPath(); ctx.moveTo(F.cx, F.top); ctx.lineTo(F.cx, F.bottom); ctx.stroke();
-  ctx.beginPath(); ctx.arc(F.cx, F.cy, 72, 0, TAU); ctx.stroke();
-  ctx.beginPath(); ctx.arc(F.cx, F.cy, 4, 0, TAU); ctx.fill();
+  c.strokeStyle = 'rgba(245,250,245,.85)';
+  c.fillStyle = 'rgba(245,250,245,.85)';
+  c.lineWidth = 3;
+  c.strokeRect(F.left, F.top, F.w, F.h);
+  c.beginPath(); c.moveTo(F.cx, F.top); c.lineTo(F.cx, F.bottom); c.stroke();
+  c.beginPath(); c.arc(F.cx, F.cy, 72, 0, TAU); c.stroke();
+  c.beginPath(); c.arc(F.cx, F.cy, 4, 0, TAU); c.fill();
 
   for (const side of [0, 1]) {
     const gx = side ? F.right : F.left;
     const dir = side ? -1 : 1;
-    ctx.strokeRect(side ? gx - 140 : gx, F.cy - 150, 140, 300);
-    ctx.strokeRect(side ? gx - 56 : gx, F.cy - 85, 56, 170);
-    ctx.beginPath(); ctx.arc(gx + dir * 100, F.cy, 3.5, 0, TAU); ctx.fill();
-    ctx.beginPath();
-    if (side) ctx.arc(gx + dir * 100, F.cy, 62, Math.PI - 0.93, Math.PI + 0.93);
-    else ctx.arc(gx + dir * 100, F.cy, 62, -0.93, 0.93);
-    ctx.stroke();
+    c.strokeRect(side ? gx - 140 : gx, F.cy - 150, 140, 300);
+    c.strokeRect(side ? gx - 56 : gx, F.cy - 85, 56, 170);
+    c.beginPath(); c.arc(gx + dir * 100, F.cy, 3.5, 0, TAU); c.fill();
+    c.beginPath();
+    if (side) c.arc(gx + dir * 100, F.cy, 62, Math.PI - 0.93, Math.PI + 0.93);
+    else c.arc(gx + dir * 100, F.cy, 62, -0.93, 0.93);
+    c.stroke();
 
     // goal + net
     const nx0 = side ? F.right : F.left - GOAL.depth;
-    ctx.fillStyle = 'rgba(240,240,240,.13)';
-    ctx.fillRect(nx0, F.cy - GOAL.mouth / 2, GOAL.depth, GOAL.mouth);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(250,250,250,.4)';
-    ctx.lineWidth = 1;
+    c.fillStyle = 'rgba(240,240,240,.13)';
+    c.fillRect(nx0, F.cy - GOAL.mouth / 2, GOAL.depth, GOAL.mouth);
+    c.save();
+    c.strokeStyle = 'rgba(250,250,250,.4)';
+    c.lineWidth = 1;
     for (let gxl = nx0 + 5; gxl < nx0 + GOAL.depth; gxl += 7) {
-      ctx.beginPath(); ctx.moveTo(gxl, F.cy - GOAL.mouth / 2); ctx.lineTo(gxl, F.cy + GOAL.mouth / 2); ctx.stroke();
+      c.beginPath(); c.moveTo(gxl, F.cy - GOAL.mouth / 2); c.lineTo(gxl, F.cy + GOAL.mouth / 2); c.stroke();
     }
     for (let gyl = F.cy - GOAL.mouth / 2 + 6; gyl < F.cy + GOAL.mouth / 2; gyl += 10) {
-      ctx.beginPath(); ctx.moveTo(nx0, gyl); ctx.lineTo(nx0 + GOAL.depth, gyl); ctx.stroke();
+      c.beginPath(); c.moveTo(nx0, gyl); c.lineTo(nx0 + GOAL.depth, gyl); c.stroke();
     }
-    ctx.restore();
-    ctx.fillStyle = '#f8f8f8';
-    ctx.fillRect(gx - 3, F.cy - GOAL.mouth / 2 - 7, 6, 7);
-    ctx.fillRect(gx - 3, F.cy + GOAL.mouth / 2, 6, 7);
-    ctx.fillStyle = 'rgba(245,250,245,.85)';
+    c.restore();
+    c.fillStyle = '#f8f8f8';
+    c.fillRect(gx - 3, F.cy - GOAL.mouth / 2 - 7, 6, 7);
+    c.fillRect(gx - 3, F.cy + GOAL.mouth / 2, 6, 7);
+    c.fillStyle = 'rgba(245,250,245,.85)';
   }
 }
 
@@ -1115,9 +1221,11 @@ function drawHUD() {
   ctx.fillStyle = '#ffd75e';
   const tag = half === 3 ? '⚡ NEXT GOAL WINS ⚡' : `${half === 1 ? '1ST' : '2ND'} HALF · ${fmtTime(clock)}`;
   ctx.fillText(tag, W / 2, y0 + 49);
-  ctx.font = '600 12px ' + FONT;
-  ctx.fillStyle = 'rgba(255,255,255,.5)';
-  ctx.fillText('WASD / ARROWS move · X pass · SPACE shoot · SHIFT sprint · M mute', W / 2, H - 6);
+  if (!IS_TOUCH) {
+    ctx.font = '600 12px ' + FONT;
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    ctx.fillText('WASD / ARROWS move · X pass · SPACE shoot · SHIFT sprint · M mute', W / 2, H - 6);
+  }
 }
 
 function drawBanners() {
@@ -1180,7 +1288,7 @@ const UI = {
     const ids = ['menu', 'homePanel', 'hostPanel', 'joinPanel', 'teamGrid', 'btnSolo', 'btnHost', 'btnJoin',
       'roomCode', 'hostStatus', 'btnCancelHost', 'joinInput', 'btnDoJoin', 'joinStatus', 'btnCancelJoin',
       'goalBanner', 'goalText', 'endPanel', 'endTitle', 'endScore', 'endNote', 'btnRematch', 'btnMenu',
-      'toast', 'badge', 'muteBtn'];
+      'toast', 'badge', 'muteBtn', 'touchUI', 'touchZone', 'stick', 'stickKnob', 'tbtnPass', 'tbtnShoot', 'tbtnSprint'];
     for (const id of ids) this.el[id] = document.getElementById(id);
 
     TEAMS.forEach((tm, i) => {
@@ -1214,6 +1322,15 @@ const UI = {
     this.el.joinInput.addEventListener('input', () => {
       this.el.joinInput.value = this.el.joinInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     });
+
+    document.body.classList.toggle('touch', IS_TOUCH);
+    if (IS_TOUCH) {
+      document.querySelector('#homePanel .hint').textContent =
+        'Left thumb: drag anywhere to move · Right thumb: PASS / SHOOT / SPRINT';
+    }
+  },
+  showTouchUI(show) {
+    this.el.touchUI.classList.toggle('hidden', !(show && IS_TOUCH));
   },
   showPanel(name) {
     for (const p of ['homePanel', 'hostPanel', 'joinPanel']) this.el[p].classList.toggle('hidden', p !== name);
@@ -1301,6 +1418,7 @@ function frame(now) {
 
 UI.init();
 Input.init();
+Touch.init();
 requestAnimationFrame(frame);
 // Keep the host simulating (and guest inputs flowing) when the tab is hidden —
 // rAF pauses in background tabs, which would freeze the match for the peer.

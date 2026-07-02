@@ -35,14 +35,17 @@ Same computer? Use two browser windows.
 
 ## Controls
 
-| Action | Keys |
-|---|---|
-| Move | WASD / Arrow keys |
-| Pass | X (or J) |
-| Shoot | SPACE (or K) |
-| Sprint | SHIFT |
-| Mute | M |
-| Rematch (after full-time) | ENTER |
+| Action | Keyboard | Touch (iPhone/iPad) |
+|---|---|---|
+| Move | WASD / Arrow keys | Drag anywhere on the left half (floating joystick) |
+| Pass | X (or J) | PASS button |
+| Shoot | SPACE (or K) | SHOOT button |
+| Sprint | SHIFT (hold) | SPRINT button (hold) |
+| Mute | M | 🔊 button |
+| Rematch (after full-time) | ENTER | REMATCH button |
+
+On phones the game plays in **landscape** (a rotate prompt appears in
+portrait). Tip: on iPhone, use Share → *Add to Home Screen* for fullscreen.
 
 You always control the teammate nearest the ball (gold ring + arrow);
 switching is automatic. Keepers are AI. Two 2:30 halves; if it's level at

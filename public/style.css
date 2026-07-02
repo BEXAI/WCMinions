@@ -14,9 +14,24 @@ html, body {
   font-family: var(--font);
   color: #f2f6f2;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
-body { display: flex; align-items: center; justify-content: center; }
+body {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input { -webkit-user-select: text; user-select: text; }
 
 #stage {
   position: relative;
@@ -38,6 +53,7 @@ body { display: flex; align-items: center; justify-content: center; }
 #menu {
   position: absolute;
   inset: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,6 +65,7 @@ body { display: flex; align-items: center; justify-content: center; }
   width: min(680px, 92%);
   max-height: 94%;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--panel);
   border: 2px solid rgba(255, 215, 94, 0.35);
   border-radius: 22px;
@@ -58,7 +75,7 @@ body { display: flex; align-items: center; justify-content: center; }
 }
 
 h1 {
-  font-size: 52px;
+  font-size: clamp(30px, 6vw, 52px);
   letter-spacing: 2px;
   color: var(--gold);
   text-shadow: 0 3px 0 #6b520f, 0 8px 24px rgba(0, 0, 0, 0.6);
@@ -114,9 +131,9 @@ button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; bo
 .hint { margin-top: 16px; font-size: 12.5px; color: #8faa93; line-height: 1.6; }
 
 #roomCode {
-  font-size: 64px;
+  font-size: clamp(38px, 10vw, 64px);
   font-weight: 900;
-  letter-spacing: 14px;
+  letter-spacing: clamp(6px, 2vw, 14px);
   color: var(--gold);
   margin: 12px 0 8px;
   text-shadow: 0 3px 0 #6b520f;
@@ -155,7 +172,7 @@ button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; bo
 #goalBanner.show { animation: goalSlide 2.6s ease-out forwards; }
 #goalText {
   display: inline-block;
-  font-size: 64px;
+  font-size: clamp(26px, 7vw, 64px);
   font-weight: 900;
   letter-spacing: 4px;
   color: #fff;
@@ -177,6 +194,7 @@ button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; bo
 #endPanel {
   position: absolute;
   inset: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -191,9 +209,9 @@ button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; bo
   text-align: center;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
 }
-.trophy { font-size: 84px; filter: drop-shadow(0 8px 18px rgba(255, 215, 94, 0.35)); }
-#endTitle { font-size: 30px; color: var(--gold); letter-spacing: 1.5px; margin: 10px 0 6px; }
-#endScore { font-size: 44px; font-weight: 900; margin-bottom: 8px; }
+.trophy { font-size: clamp(52px, 10vw, 84px); filter: drop-shadow(0 8px 18px rgba(255, 215, 94, 0.35)); }
+#endTitle { font-size: clamp(19px, 4vw, 30px); color: var(--gold); letter-spacing: 1.5px; margin: 10px 0 6px; }
+#endScore { font-size: clamp(28px, 6vw, 44px); font-weight: 900; margin-bottom: 8px; }
 #endNote { min-height: 20px; color: #9fc4a8; font-size: 13.5px; margin-bottom: 16px; }
 
 /* ---------- toast / badge / mute ---------- */
@@ -237,4 +255,104 @@ button.gold { background: var(--gold); color: #201a04; border-color: #a8871f; bo
   font-size: 16px;
   border-radius: 12px;
   background: rgba(9, 16, 12, 0.85);
+  z-index: 40;
+}
+#badge { z-index: 40; }
+#toast { z-index: 45; }
+
+/* ---------- touch controls (iPhone / iPad) ---------- */
+#touchUI { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+
+#touchZone {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 55%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#stick {
+  position: fixed;
+  width: 120px; height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  display: none;
+  pointer-events: none;
+}
+#stick.on { display: block; }
+#stickKnob {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 56px; height: 56px;
+  margin: -28px;
+  border-radius: 50%;
+  background: rgba(255, 215, 94, 0.9);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45), inset 0 -4px 0 rgba(0, 0, 0, 0.2);
+}
+
+.tcluster {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: 196px;
+  height: 190px;
+  pointer-events: none;
+}
+.tbtn {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #12200f;
+  border: 2px solid rgba(0, 0, 0, 0.3);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.35);
+  opacity: 0.88;
+}
+.tbtn.pressed { transform: scale(0.9); filter: brightness(1.2); opacity: 1; }
+.tbtn.shoot { width: 92px; height: 92px; right: 0; bottom: 0; background: var(--gold); font-size: 16px; }
+.tbtn.pass { width: 72px; height: 72px; right: 104px; bottom: 6px; background: #6bcb77; font-size: 13px; }
+.tbtn.sprint { width: 64px; height: 64px; right: 30px; bottom: 106px; background: #4d96ff; font-size: 11px; color: #eef4ff; }
+
+body.touch #muteBtn { padding: 10px 14px; font-size: 18px; }
+
+/* ---------- rotate-to-landscape overlay ---------- */
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: radial-gradient(120% 90% at 50% 0%, #16281d 0%, #0a120d 60%);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.5;
+  color: var(--gold);
+}
+#rotate span { font-size: 14px; font-weight: 700; color: #9fc4a8; }
+@media (orientation: portrait) {
+  body.touch #rotate { display: flex; }
+}
+
+/* ---------- small landscape screens (phones) ---------- */
+@media (max-height: 520px) {
+  .panel { padding: 14px 20px; border-radius: 16px; max-height: 96%; }
+  .tag { margin: 6px 0 10px; font-size: 12.5px; }
+  h2 { font-size: 13px; margin-bottom: 8px; }
+  #teamGrid { gap: 6px; margin-bottom: 12px; }
+  .team-cell canvas { width: 44px; height: 29px; }
+  .team-cell span { font-size: 10.5px; }
+  button { padding: 10px 16px; font-size: 13px; }
+  .hint { margin-top: 8px; font-size: 11px; line-height: 1.45; }
+  #joinInput { font-size: 30px; width: 190px; padding: 6px; margin: 8px auto; }
+  #hostStatus, #joinStatus { margin: 6px 0 10px; }
+  #endPanel .card { padding: 18px 30px; }
 }
